@@ -7,6 +7,7 @@ from models.products_page import ProductsPage
 from models.cart_page import CartPage
 from models.purchase_form import PurchaseFrom
 from models.utils import calculate_cart_total
+from api.api import API
 from typing import List
 
 hash = ""
@@ -17,48 +18,17 @@ def get_hashed_password(route: Route, user: User):
     hash = route.request.post_data_json['password']
     route.continue_()
 
-@pytest.fixture(scope="module")
-def user():
-    return User("newuser", "lusha")
-
-@pytest.fixture(scope="module")
-def estore_page(playwright: Playwright):
-    browser = playwright.chromium.launch(
-        headless=False,
-        slow_mo=200,
-    )
- 
-    page = browser.new_page()
-    page.goto("https://www.demoblaze.com/")
-    page.route(
+def test_signup(estore_page: Page, user: User):
+    estore_page.route(
         "https://api.demoblaze.com/signup",
          get_hashed_password
     )
 
-    return page
-
-
-@pytest.fixture()
-def items():
-    return [Item("Nexus 6", 650, "phone"), Item("MacBook Pro", 1100, "laptop")]
-
-@pytest.fixture
-def api_context(playwright: Playwright) -> APIRequestContext:
-    api_context = playwright.request.new_context(
-        base_url="https://api.demoblaze.com/",
-        extra_http_headers={'Content-Type': 'application/json'},
-    )
-
-    yield api_context
-    
-    api_context.dispose()
-
-
-def test_signup(estore_page: Page, user: User):
+    global hash 
     signup = Signup(estore_page)
     signup.go_to()
-    signup.signup(user)
-    
+    hash = signup.signup(user)
+
     expect(estore_page.locator("#signInModal")).to_be_hidden()
 
 
@@ -103,60 +73,33 @@ def test_place_order(estore_page: Page, items: List[Item], user: User):
 
 
 def test_api_login(api_context: APIRequestContext, user: User):
-    response = api_context.post(
-        "/login",
-        data={
-            "username": user.username,
-            "password": hash
-        }
-    )
+    api = API(api_context)
+
+    response = api.login(user.username, hash)
     assert response.status == 200
     
     global auth_token
-    auth_token = response.json().split()[1]
+    auth_token = api.get_auth_token(response)
 
 
 def test_api_add_to_cart(api_context: APIRequestContext):
-    response = api_context.post(
-        "/addtocart",
-        data={
-            "cookie": auth_token,
-            "prod_id": 3,
-            "flag": True,
-            "id": "27330f4a-6686-f7d6-1298-68e2f660fb91"
-        }
-    )
+    api = API(api_context, auth_token)
+    response = api.add_to_cart(3)
+
     assert response.status == 200
 
 
 def test_validate_cart(api_context: APIRequestContext):
-    response = api_context.post(
-        "/viewcart",
-        data={
-           "cookie": auth_token,
-           "flag": True 
-        }
-    )
-    assert response.status == 200
+    api = API(api_context, auth_token)
+    items_in_cart = api.get_items_in_cart()
 
-    response_body = response.json()
-    items_in_cart = len(response_body["Items"])
-    prod_id = response_body["Items"][0]["prod_id"]
+    prod_id = items_in_cart[0]["prod_id"]
 
-    assert items_in_cart == 1
+    assert len(items_in_cart) == 1
     assert prod_id == 3
 
-    response = api_context.post(
-        "/view",
-       data={"id": prod_id}
-    )
-    assert response.status == 200
-
-    response_body = response.json()
-    name = response_body["title"]
-    price = response_body["price"]
-    id = response_body["id"]
+    item = api.get_item_details(prod_id)  
  
-    assert name == "Nexus 6"
-    assert price == float(650)
-    assert id == 3
+    assert item["name"] == "Nexus 6"
+    assert item["price"] == float(650)
+    assert item["id"] == 3

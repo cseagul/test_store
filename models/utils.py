@@ -8,3 +8,5 @@ def calculate_cart_total(items: List[Item]):
         total += item.price
 
     return float(total)
+
+

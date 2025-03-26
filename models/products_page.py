@@ -1,5 +1,6 @@
 from playwright.sync_api import Page
 from models.user_item import Item
+import time
 from typing import List
 
 class ProductsPage:
@@ -18,6 +19,7 @@ class ProductsPage:
 
     def add_items_to_cart(self, items: List[Item]):
         for item in items:
+            time.sleep(0.5)
             if item.type == "phone":
                 self.phones_link.click()
             elif item.type == "laptop":
