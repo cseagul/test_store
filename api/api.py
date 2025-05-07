@@ -1,7 +1,6 @@
 from playwright.sync_api import APIRequestContext, Response
 from models.user_item import Item
 
-
 class API:
 
     def __init__(self, context: APIRequestContext, auth_token="") -> None:
